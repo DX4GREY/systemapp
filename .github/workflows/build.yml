@@ -164,10 +164,51 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+  build-overlay:
+    name: Build OverlayFS Magisk Modules
+    runs-on: ubuntu-latest
+    needs: build-architectures
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_magisk != 'false' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - armeabi-v7a
+          - arm64-v8a
+          - x86
+          - x86_64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download binary for ${{ matrix.abi }}
+        uses: actions/download-artifact@v4
+        with:
+          name: systemapp-${{ matrix.abi }}
+          path: release/
+
+      - name: Build OverlayFS Magisk module for ${{ matrix.abi }}
+        env:
+          ABI: ${{ matrix.abi }}
+        run: |
+          chmod +x scripts/build-magisk-overlay.sh
+          scripts/build-magisk-overlay.sh
+
+      - name: Upload OverlayFS Magisk module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SystemApp-Overlay-Magisk-${{ matrix.abi }}
+          path: release/SystemApp-Overlay-Magisk-${{ matrix.abi }}.zip
+          compression-level: 9
+          retention-days: 90
+          if-no-files-found: error
+
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-architectures, build-magisk, build-termux]
+    needs: [build-architectures, build-magisk, build-termux, build-overlay]
     # always() so an optional job being skipped (build_magisk/build_termux
     # set to "false" via workflow_dispatch) doesn't cascade into skipping
     # the release itself - only build-architectures success is required.
@@ -218,6 +259,7 @@ jobs:
 
             ## Magisk Modules
             - `SystemApp-Magisk-<abi>.zip` - Flashable Magisk module for each architecture
+            - `SystemApp-Overlay-Magisk-<abi>.zip` - OverlayFS module for dynamic partition devices
 
             ## Termux Package
             - `systemapp.deb` - Debian package for Termux (arm64 only)
