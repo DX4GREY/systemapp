@@ -34,12 +34,6 @@ Makefile
 *.so
 *.so.*
 
-# Executables
-*.exe
-*.out
-*.app
-systemapp
-
 # Compiler artifacts
 *.d
 *.s
