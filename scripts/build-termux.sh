@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# Build a Termux-compatible .deb package.
-# Must be run inside Termux (or a Termux-like prefix) since it links
-# against $PREFIX and stages files under Termux's /data/data/com.termux/...
-# layout. Produces release/systemapp.deb.
+# Build a Termux-compatible .deb package around the already-built arm64-v8a
+# binary. Does NOT recompile from source, since doing that on a non-Android
+# host would silently package a host-architecture binary labeled "aarch64"
+# (that was a bug in an earlier version of this script - packaging must
+# reuse the actual cross-compiled Android binary, not a host rebuild).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="$(grep -oP '(?<=kVersion = ")[^"]+' include/systemapp/version.hpp)"
+BIN_SRC="release/systemapp-arm64-v8a"
 PKG_ROOT="build-termux/pkgroot"
-BIN_DIR="${PKG_ROOT}${PREFIX:-/data/data/com.termux/files/usr}/bin"
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+BIN_DIR="${PKG_ROOT}${TERMUX_PREFIX}/bin"
+
+if [[ ! -f "${BIN_SRC}" ]]; then
+    echo "error: ${BIN_SRC} not found - run 'ABI=arm64-v8a ./build.sh binary' first" >&2
+    exit 1
+fi
 
 rm -rf build-termux
 mkdir -p "${BIN_DIR}" "${PKG_ROOT}/DEBIAN"
 
-cmake -B build-termux/src -DCMAKE_BUILD_TYPE=Release
-cmake --build build-termux/src -j"$(nproc)"
-cp build-termux/src/systemapp "${BIN_DIR}/systemapp"
+cp "${BIN_SRC}" "${BIN_DIR}/systemapp"
 chmod 755 "${BIN_DIR}/systemapp"
 
 cat > "${PKG_ROOT}/DEBIAN/control" <<EOF

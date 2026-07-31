@@ -68,25 +68,31 @@ call `SYSTEMAPP_REGISTER_COMMAND(FooCommand)` at file scope. `main.cpp` and
 
 ## Building
 
-Standalone ARM64 binary via NDK:
+Standalone binary via NDK (defaults to `arm64-v8a`, override with `ABI=`):
 ```bash
 export ANDROID_NDK_HOME=/path/to/ndk
-./build.sh binary
-# -> release/systemapp
+./build.sh binary                    # -> release/systemapp-arm64-v8a
+ABI=armeabi-v7a ./build.sh binary    # -> release/systemapp-armeabi-v7a
 ```
+Supported `ABI` values: `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`.
 
-Termux `.deb` (run inside Termux):
+Termux `.deb` (packages the arm64-v8a binary; build that first):
 ```bash
 ./build.sh termux
 # -> release/systemapp.deb
 ```
 
-Magisk module (after a binary build):
+Magisk module (packages one ABI at a time; build that ABI's binary first):
 ```bash
 ./build.sh binary
-./build.sh magisk
-# -> release/SystemApp-Magisk.zip
+ABI=arm64-v8a ./build.sh magisk
+# -> release/SystemApp-Magisk-arm64-v8a.zip
 ```
+
+CI (`.github/workflows/build.yml`) builds all four ABIs in a matrix, packages
+a Magisk module per ABI plus one Termux `.deb`, and on pushes to `main`/
+`master` attaches everything to a GitHub Release tagged from
+`include/systemapp/version.hpp`.
 
 Host build for iterating on non-Android-specific logic:
 ```bash

@@ -23,5 +23,8 @@ cmake -B "${BUILD_DIR}" -G Ninja \
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 mkdir -p release
-cp "${BUILD_DIR}/systemapp" "release/systemapp"
-echo "Built release/systemapp (${ABI}, API ${API})"
+# Name includes the ABI so all four architectures can sit side by side in
+# release/ without overwriting each other (CI builds them in parallel and
+# uploads/downloads them as separate artifacts, then reassembles here).
+cp "${BUILD_DIR}/systemapp" "release/systemapp-${ABI}"
+echo "Built release/systemapp-${ABI} (API ${API})"
