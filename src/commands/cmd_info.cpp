@@ -14,6 +14,8 @@
 #include <sys/utsname.h>
 #include <fstream>
 #include <sstream>
+#include <sys/stat.h>
+#include <dirent.h>
 
 namespace systemapp::commands {
 
@@ -35,6 +37,36 @@ std::string read_prop(const std::string& name) {
     while (fgets(buf.data(), buf.size(), pipe.get())) result += buf.data();
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) result.pop_back();
     return result;
+}
+
+std::string detect_overlay_module_name() {
+    std::string modules_dir = "/data/adb/modules";
+    struct stat st{};
+    if (stat(modules_dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+        return {};
+    }
+
+    DIR* dir = opendir(modules_dir.c_str());
+    if (!dir) return {};
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        if (entry->d_name[0] == '.') continue;
+        
+        std::string module_path = modules_dir + "/" + std::string(entry->d_name);
+        std::string overlay_dir = module_path + "/overlay/upper/system";
+        
+        struct stat module_st{};
+        if (stat(module_path.c_str(), &module_st) == 0 && S_ISDIR(module_st.st_mode)) {
+            struct stat overlay_st{};
+            if (stat(overlay_dir.c_str(), &overlay_st) == 0 && S_ISDIR(overlay_st.st_mode)) {
+                closedir(dir);
+                return std::string(entry->d_name);
+            }
+        }
+    }
+    closedir(dir);
+    return {};
 }
 
 } // namespace
@@ -90,6 +122,10 @@ public:
             }
             root.set("partitions", parts);
 
+            std::string overlay = detect_overlay_module_name();
+            root.set("overlayfs_active", !overlay.empty());
+            if (!overlay.empty()) root.set("overlay_module", overlay);
+
             std::cout << root.dump() << "\n";
             return 0;
         }
@@ -117,6 +153,17 @@ public:
                        << " [" << p.fs_type << ", "
                        << (p.read_only ? red("ro") : green("rw"))
                        << (p.is_overlay ? ", overlay" : "") << "]\n";
+        }
+
+        std::string overlay = detect_overlay_module_name();
+        if (!overlay.empty()) {
+            std::cout << "\n" << bold("OverlayFS\n");
+            std::cout << "  Status       : " << green("active") << "\n";
+            std::cout << "  Module       : " << overlay << "\n";
+            std::cout << "  Module path  : /data/adb/modules/" << overlay << "\n";
+        } else {
+            std::cout << "\n" << bold("OverlayFS\n");
+            std::cout << "  Status       : " << red("inactive") << "\n";
         }
         return 0;
     }
