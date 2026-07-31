@@ -1,0 +1,194 @@
+name: Build SystemApp
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_magisk:
+        description: 'Build Magisk module'
+        required: false
+        default: "true"
+      build_termux:
+        description: 'Build Termux package'
+        required: false
+        default: "true"
+
+jobs:
+  build-architectures:
+    name: Build ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - armeabi-v7a
+          - arm64-v8a
+          - x86
+          - x86_64
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install Android NDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          wget -q https://dl.google.com/android/repository/android-ndk-r27b-linux.zip -O /tmp/ndk.zip
+          sudo unzip -q /tmp/ndk.zip -d /usr/local/
+          echo "ANDROID_NDK_HOME=/usr/local/android-ndk-r27b" >> $GITHUB_ENV
+      
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+      
+      - name: Build binary for ${{ matrix.abi }}
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ABI: ${{ matrix.abi }}
+          API: 29
+        run: |
+          chmod +x scripts/build-binary.sh
+          scripts/build-binary.sh
+      
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: systemapp-${{ matrix.abi }}
+          path: release/systemapp
+          compression-level: 9
+          retention-days: 30
+
+  build-magisk:
+    name: Build Magisk Module
+    runs-on: ubuntu-latest
+    needs: build-architectures
+    if: ${{ github.event_name == 'push' || github.event.inputs.build_magisk != 'false' }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - armeabi-v7a
+          - arm64-v8a
+          - x86
+          - x86_64
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download binary for ${{ matrix.abi }}
+        uses: actions/download-artifact@v4
+        with:
+          name: systemapp-${{ matrix.abi }}
+          path: release/
+      
+      - name: Build Magisk module for ${{ matrix.abi }}
+        env:
+          ABI: ${{ matrix.abi }}
+        run: |
+          chmod +x scripts/build-magisk.sh
+          scripts/build-magisk.sh
+      
+      - name: Upload Magisk module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SystemApp-Magisk-${{ matrix.abi }}
+          path: release/SystemApp-Magisk.zip
+          compression-level: 9
+          retention-days: 90
+
+  build-termux:
+    name: Build Termux Package
+    runs-on: ubuntu-latest
+    needs: build-architectures
+    if: ${{ github.event_name == 'push' || github.event.inputs.build_termux != 'false' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: systemapp-arm64-v8a
+          path: release/
+      
+      - name: Set up Termux build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev
+      
+      - name: Build Termux package
+        run: |
+          chmod +x scripts/build-termux.sh
+          scripts/build-termux.sh
+      
+      - name: Upload Termux package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: systemapp-termux
+          path: release/systemapp.deb
+          compression-level: 9
+          retention-days: 90
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-architectures, build-magisk, build-termux]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Organize artifacts
+        run: |
+          mkdir -p release
+          mv artifacts/*/systemapp-* release/
+          mv artifacts/*/SystemApp-Magisk-* release/ 2>/dev/null || true
+          mv artifacts/*/systemapp.deb release/ 2>/dev/null || true
+      
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -oP '(?<=kVersion = ")[^"]+' include/systemapp/version.hpp)
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: SystemApp ${{ steps.version.outputs.version }}
+          files: |
+            release/*
+          body: |
+            Automated build of SystemApp.
+            
+            ## Binaries
+            - `systemapp-<arch>` - Standalone binary for each architecture
+            
+            ## Magisk Modules
+            - `SystemApp-Magisk-<arch>.zip` - Flashable Magisk module for each architecture
+            
+            ## Termux Package
+            - `systemapp.deb` - Debian package for Termux
+            
+            ## Supported Architectures
+            - `armeabi-v7a` (arm 32-bit)
+            - `arm64-v8a` (arm 64-bit)
+            - `x86` (32-bit x86)
+            - `x86_64` (64-bit x86)
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
