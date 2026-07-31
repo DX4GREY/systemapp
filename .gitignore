@@ -1,0 +1,68 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+bin/
+lib/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Compiled Object files
+*.o
+*.obj
+*.ko
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Static libraries
+*.a
+*.lib
+
+# Shared libraries (Windows)
+*.dll
+
+# Shared libraries (Unix)
+*.so
+*.so.*
+
+# Executables
+*.exe
+*.out
+*.app
+systemapp
+
+# Compiler artifacts
+*.d
+*.s
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Node dependencies (if any scripts use node)
+node_modules/
+
+# Logs
+*.log
