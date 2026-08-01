@@ -1,39 +1,81 @@
 #!/usr/bin/env bash
-# Build a Termux-compatible .deb package around the already-built arm64-v8a
-# binary. Does NOT recompile from source, since doing that on a non-Android
-# host would silently package a host-architecture binary labeled "aarch64"
-# (that was a bug in an earlier version of this script - packaging must
-# reuse the actual cross-compiled Android binary, not a host rebuild).
+# Build Termux-compatible .deb packages around the already-built Android
+# binaries. Supports every ABI Termux officially targets:
+#   arm64-v8a   -> aarch64
+#   armeabi-v7a -> arm
+#   x86         -> i686
+#   x86_64      -> x86_64
+#
+# Usage:
+#   ABI=arm64-v8a ./build.sh termux   # build one architecture
+#   ABI=all ./build.sh termux         # build all four (default)
+#
+# Does NOT recompile from source, since doing that on a non-Android
+# host would silently package a host-architecture binary labeled with the
+# wrong Debian architecture (that was a bug in an earlier version of this
+# script - packaging must reuse the actual cross-compiled Android binary,
+# not a host rebuild).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="$(grep -oP '(?<=kVersion = ")[^"]+' include/systemapp/version.hpp)"
-BIN_SRC="release/systemapp-arm64-v8a"
-PKG_ROOT="build-termux/pkgroot"
+PKG_BASE="build-termux"
 TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-BIN_DIR="${PKG_ROOT}${TERMUX_PREFIX}/bin"
 
-if [[ ! -f "${BIN_SRC}" ]]; then
-    echo "error: ${BIN_SRC} not found - run 'ABI=arm64-v8a ./build.sh binary' first" >&2
-    exit 1
-fi
+# Map Android ABI name -> Termux/Debian architecture name.
+abi_to_deb_arch() {
+    case "$1" in
+        arm64-v8a)   echo aarch64 ;;
+        armeabi-v7a) echo arm ;;
+        x86)         echo i686 ;;
+        x86_64)      echo x86_64 ;;
+        *) echo "error: unsupported ABI '$1' (expected arm64-v8a, armeabi-v7a, x86, x86_64)" >&2; exit 1 ;;
+    esac
+}
 
-rm -rf build-termux
-mkdir -p "${BIN_DIR}" "${PKG_ROOT}/DEBIAN"
+build_one() {
+    local abi="$1"
+    local deb_arch
+    deb_arch="$(abi_to_deb_arch "${abi}")"
 
-cp "${BIN_SRC}" "${BIN_DIR}/systemapp"
-chmod 755 "${BIN_DIR}/systemapp"
+    local bin_src="release/systemapp-${abi}"
+    if [[ ! -f "${bin_src}" ]]; then
+        echo "error: ${bin_src} not found - run 'ABI=${abi} ./build.sh binary' first" >&2
+        exit 1
+    fi
 
-cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+    local pkg_root="${PKG_BASE}/${deb_arch}/pkgroot"
+    local bin_dir="${pkg_root}${TERMUX_PREFIX}/bin"
+
+    rm -rf "${pkg_root}"
+    mkdir -p "${bin_dir}" "${pkg_root}/DEBIAN"
+
+    cp "${bin_src}" "${bin_dir}/systemapp"
+    chmod 755 "${bin_dir}/systemapp"
+
+    cat > "${pkg_root}/DEBIAN/control" <<EOF
 Package: systemapp
 Version: ${VERSION}
-Architecture: aarch64
+Architecture: ${deb_arch}
 Maintainer: SystemApp Project
 Description: Native Android system administration CLI (root-only operations)
  SystemApp is a BusyBox/Toybox-style native CLI for managing system apps,
  partitions, properties, and root-level Android system state.
 EOF
 
-mkdir -p release
-dpkg-deb --build "${PKG_ROOT}" "release/systemapp.deb"
-echo "Built release/systemapp.deb"
+    mkdir -p release
+    # --root-owner-group so files are owned by root in the package even when
+    # building as a non-root user (prevents the "unusual owner" warning).
+    dpkg-deb --root-owner-group --build "${pkg_root}" "release/systemapp-${deb_arch}.deb"
+    echo "Built release/systemapp-${deb_arch}.deb"
+}
+
+ABI="${ABI:-all}"
+
+if [[ "${ABI}" == "all" ]]; then
+    for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+        build_one "${abi}"
+    done
+else
+    build_one "${ABI}"
+fi

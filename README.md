@@ -76,11 +76,20 @@ ABI=armeabi-v7a ./build.sh binary    # -> release/systemapp-armeabi-v7a
 ```
 Supported `ABI` values: `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`.
 
-Termux `.deb` (packages the arm64-v8a binary; build that first):
+Termux `.deb` (packages the binaries built above for all four architectures;
+build them first, or set `ABI=` to build just one):
 ```bash
-./build.sh termux
-# -> release/systemapp.deb
+./build.sh termux          # all four ABIs
+# -> release/systemapp-aarch64.deb  (arm64-v8a)
+# -> release/systemapp-arm.deb      (armeabi-v7a)
+# -> release/systemapp-i686.deb     (x86)
+# -> release/systemapp-x86_64.deb   (x86_64)
+
+ABI=arm64-v8a ./build.sh termux
+# -> release/systemapp-aarch64.deb  (single ABI)
 ```
+Termux/Debian architecture mapping: `arm64-v8a` → `aarch64`,
+`armeabi-v7a` → `arm`, `x86` → `i686`, `x86_64` → `x86_64`.
 
 Magisk module (packages one ABI at a time; build that ABI's binary first):
 ```bash
@@ -90,9 +99,9 @@ ABI=arm64-v8a ./build.sh magisk
 ```
 
 CI (`.github/workflows/build.yml`) builds all four ABIs in a matrix, packages
-a Magisk module per ABI plus one Termux `.deb`, and on pushes to `main`/
-`master` attaches everything to a GitHub Release tagged from
-`include/systemapp/version.hpp`.
+a Magisk module and a Termux `.deb` per ABI (four `.deb` packages, one per
+Termux/Debian architecture), and on pushes to `main`/`master` attaches
+everything to a GitHub Release tagged from `include/systemapp/version.hpp`.
 
 Host build for iterating on non-Android-specific logic:
 ```bash

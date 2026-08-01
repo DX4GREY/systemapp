@@ -134,32 +134,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Termux only targets arm64 devices in practice, so only the
-      # arm64-v8a binary is needed here. Packaging reuses that binary
-      # directly rather than recompiling on the (x86_64) runner - a
-      # from-source rebuild here would silently produce a host-architecture
-      # binary mislabeled as aarch64 in the .deb control file.
-      - name: Download arm64 binary
+      # Packaging reuses each ABI's cross-compiled binary directly rather
+      # than recompiling on the (x86_64) runner - a from-source rebuild here
+      # would silently produce a host-architecture binary mislabeled as a
+      # Termux/Debian architecture in the .deb control file.
+      - name: Download all ABI binaries
         uses: actions/download-artifact@v4
         with:
-          name: systemapp-arm64-v8a
           path: release/
+          pattern: systemapp-*
+          merge-multiple: true
 
       - name: Set up Termux build environment
         run: |
           sudo apt-get update
           sudo apt-get install -y dpkg-dev
 
-      - name: Build Termux package
+      - name: Build Termux packages for all architectures
         run: |
           chmod +x scripts/build-termux.sh
-          scripts/build-termux.sh
+          ABI=all scripts/build-termux.sh
 
       - name: Upload Termux package artifact
         uses: actions/upload-artifact@v4
         with:
           name: systemapp-termux
-          path: release/systemapp.deb
+          path: release/systemapp-*.deb
           compression-level: 9
           retention-days: 90
           if-no-files-found: error
@@ -231,9 +231,9 @@ jobs:
         run: |
           mkdir -p release
           # Every artifact filename already encodes its own ABI/target
-          # (systemapp-<abi>, SystemApp-Magisk-<abi>.zip, systemapp.deb),
-          # so flattening every file straight into release/ is enough -
-          # no fragile wildcard renaming needed.
+          # (systemapp-<abi>, SystemApp-Magisk-<abi>.zip,
+          # systemapp-<deb-arch>.deb), so flattening every file straight
+          # into release/ is enough - no fragile wildcard renaming needed.
           find artifacts -type f -exec cp {} release/ \;
           ls -la release/
 
@@ -261,8 +261,11 @@ jobs:
             - `SystemApp-Magisk-<abi>.zip` - Flashable Magisk module for each architecture
             - `SystemApp-Overlay-Magisk-<abi>.zip` - OverlayFS module for dynamic partition devices
 
-            ## Termux Package
-            - `systemapp.deb` - Debian package for Termux (arm64 only)
+            ## Termux Packages
+            - `systemapp-aarch64.deb` - Debian package for Termux (arm64-v8a)
+            - `systemapp-arm.deb` - Debian package for Termux (armeabi-v7a)
+            - `systemapp-i686.deb` - Debian package for Termux (x86)
+            - `systemapp-x86_64.deb` - Debian package for Termux (x86_64)
 
             ## Supported Architectures
             - `armeabi-v7a` (arm 32-bit)
